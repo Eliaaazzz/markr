@@ -1,0 +1,31 @@
+# Disposable benchmark overlay. It starts only PostgreSQL, the backend, and a
+# standard-library Python runner; no host ports or persistent data are used.
+#
+#   docker compose -p markr-bench -f docker-compose.yml -f docker-compose.benchmark.yml up -d --build --wait db backend
+#   docker compose -p markr-bench -f docker-compose.yml -f docker-compose.benchmark.yml run --rm benchmark
+#   docker compose -p markr-bench -f docker-compose.yml -f docker-compose.benchmark.yml down -v
+
+services:
+  db:
+    ports: !override []
+    volumes: !override
+      - type: tmpfs
+        target: /var/lib/postgresql/data
+
+  backend:
+    ports: !override []
+
+  benchmark:
+    image: python:3.12-slim
+    working_dir: /work
+    volumes:
+      - type: bind
+        source: .
+        target: /work
+        read_only: true
+    command: ["python", "scripts/benchmark.py", "http://backend:4567"]
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes: !override {}
