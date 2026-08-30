@@ -88,6 +88,14 @@ overwrite the summary with a stale count once the lock cleared. A test drives
 eight threads of interleaved documents, with shared students listed in
 opposing orders, and asserts exact final maxima and an exact summary count.
 
+Startup reconciliation follows the same rule. It takes a
+`SHARE ROW EXCLUSIVE` lock on the result table before aggregating: existing
+imports finish first, new imports wait briefly, concurrent startups serialize,
+and ordinary dashboard reads continue. The aggregate statement therefore gets
+a fresh READ COMMITTED snapshot instead of overwriting a just-committed summary
+with counts captured before it waited. A real-Postgres regression test pins that
+specific blocking order through `pg_blocking_pids`, not a timing-dependent sleep.
+
 Result reads stay in SQL. One statement calculates all eight statistics and all
 ten histogram bins, so every value in a dashboard response comes from the same
 snapshot. It also means only one row crosses the wire, regardless of test size.
@@ -106,8 +114,11 @@ Accessibility accounts for much of the frontend work:
 - Each statistic is in a definition list associated with its label. The
   histogram uses ten ordinary list items, with accessible names such as
   "30 to under 40 percent: 6 students".
-- New results are announced only when they arrive. Initial loads and unchanged
-  polls stay silent. Connection loss and recovery are each announced once.
+- New results are announced only when they arrive. The page compares the
+  dashboard's opaque ETag rather than rounded display JSON, so even a tiny
+  rescan that leaves every visible number unchanged is announced. Initial loads
+  and unchanged polls stay silent. Connection loss and recovery are each
+  announced once.
 - `prefers-reduced-motion` turns off animations. Each route sets its own title,
   and navigation moves focus to the new heading.
 
@@ -156,17 +167,38 @@ nginx serves the frontend bundle and proxies `/api/` to the backend. The browser
 
 ## Query performance
 
-The first implementation fetched every row for a test and calculated statistics in
-Python on every poll. I measured that version before moving the work. All figures
-below came from the same laptop setup: Docker Desktop, client and server on one
-machine, and the load generator now committed as `scripts/benchmark.py`, so the
-run is repeatable against a running stack without any local Python:
+The repository retains only the current SQL implementation, not a runnable
+pre-optimization baseline. This section therefore reports current measurements
+instead of a before/after comparison that a reviewer cannot reproduce.
+
+The benchmark runs in its own Compose project: no host ports, a tmpfs database,
+and a Python container that mounts this checkout read-only. Each invocation
+generates unique test ids, verifies every expected count through both the
+aggregate endpoint and `/tests`, and exits nonzero on a status, response, or
+persisted-count mismatch. No local Python is needed:
 
 ```bash
-docker run --rm --network markr_default -v "${PWD}:/work" -w /work python:3.12-slim python scripts/benchmark.py http://backend:4567
+docker compose -p markr-bench -f docker-compose.yml -f docker-compose.benchmark.yml up -d --build --wait db backend
+docker compose -p markr-bench -f docker-compose.yml -f docker-compose.benchmark.yml run --rm benchmark
+docker compose -p markr-bench -f docker-compose.yml -f docker-compose.benchmark.yml down -v
 ```
 
-The figures show the shape of the change; absolute numbers move with hardware.
+Absolute numbers move with hardware. A clean isolated run on 2026-08-30 at
+commit `832c8c7` measured:
+
+- The 81-student full dashboard at 2.2 ms p50 with one reader and 80.6 ms p50
+  with 32 readers. The unchanged 304 path reached 713 requests/second at 32
+  readers with 44.2 ms p50.
+- A 10,000-student document imported in 266 ms. Its full dashboard read was
+  7.0 ms p50 with one reader and 87.4 ms p50 with 32 readers; the latter
+  reached 353 requests/second.
+- The 10,000-student unchanged path reached 675 requests/second at 32 readers
+  with 45.8 ms p50.
+- Three short import runs persisted and independently verified 10,000 new
+  students each. Observed write throughput was 15,476 students/second with one
+  client, 24,892 with two, and 24,427 with four.
+
+These are local short-run observations, not a production capacity guarantee.
 
 The rework had four parts:
 
@@ -181,25 +213,13 @@ The rework had four parts:
    from one single-row read. Browsers follow this path automatically through
    `Cache-Control: no-cache`, and client polls carry jitter.
 4. Imports commit a `NOTIFY`, which the backend fans out through server-sent
-   events. The dashboard refetches immediately. Worst-case freshness moved from
-   5 seconds to commit time, while polling remains the fallback.
+   events. The dashboard normally refetches at commit time, while a 5-second
+   poll remains the bounded fallback when the stream is unavailable.
 
-For a 10,000-student test, the before and after measurements were:
-
-- Single-reader latency: 17.3 ms then 8.7 ms per dashboard read.
-- Saturation throughput: about 57/s then about 270/s.
-- p50 under 32 concurrent viewers: 549 ms then 115 ms.
-- An unchanged poll now takes ~3.5 ms and reaches ~530/s with 32 viewers,
-  regardless of test size. The 81-student and 10,000-student tests measure the
-  same because the 304 path never touches the results table.
-
-Imports were already fast and stayed that way: ~19,000 fresh students/second
-sustained (the benchmark sends previously unseen students per document, so
-this is real write throughput, never the idempotent skip path), and a single
-10,000-student document lands in ~340 ms. Idempotent re-imports still write
-nothing. If this needs fleet-scale headroom, the next steps are
-precomputed aggregates for O(1) reads, then read replicas, then an ingest queue
-if exam-day bursts exceed synchronous capacity.
+The full dashboard query remains O(students in the selected test), while the
+unchanged path and `/tests` are O(1) per selected summary row. If larger tests
+need more headroom, the next steps are precomputed aggregates, read replicas,
+then an ingest queue once production traces establish a real burst target.
 
 ## Security posture
 
@@ -221,13 +241,13 @@ if exam-day bursts exceed synchronous capacity.
 
 ## Tests
 
-There are 166 tests across three suites. The backend has 120 tests and is gated at
-100% statement coverage, the frontend has 28 tests, and the end-to-end suite has
-18 specs. Every suite runs inside Docker; no local Node, Python, or browsers are
+There are 170 tests across three suites. The backend has 122 tests and is gated at
+100% statement coverage, the frontend has 29 tests, and the end-to-end suite has
+19 specs. Every suite runs inside Docker; no local Node, Python, or browsers are
 needed on any platform. Run these blocks in order from the repository root.
 
 ```bash
-# backend: 120 tests, 38 of them against real Postgres; the run fails
+# backend: 122 tests, 40 of them against real Postgres; the run fails
 # unless statement coverage is 100%
 docker compose up -d --wait db
 docker build --target test -t markr-backend-test ./backend
@@ -235,13 +255,13 @@ docker run --rm --network markr_default -e DATABASE_URL="postgresql+psycopg://ma
 ```
 
 ```bash
-# frontend: 28 component tests (Vitest + Testing Library)
+# frontend: 29 component tests (Vitest + Testing Library)
 docker build --target test -t markr-frontend-test ./frontend
 docker run --rm markr-frontend-test
 ```
 
 ```bash
-# end to end: 18 Playwright specs against an isolated stack (ports 3100
+# end to end: 19 Playwright specs against an isolated stack (ports 3100
 # and 4667, tmpfs database), so a run can never touch development data
 docker compose -p markr-e2e -f docker-compose.yml -f docker-compose.e2e.yml up -d --build --wait
 docker build -f Dockerfile.e2e -t markr-e2e-runner .
@@ -257,8 +277,9 @@ independently of the implementation before being asserted: mean 50.8, quartiles
 against a plain-Python reference.
 
 The end-to-end suite covers the gaps that unit tests cannot reach: SPA fallback
-on a cold deep link, the same-origin `/api` proxy, security headers, and the
-upload path from file picker through the rendered histogram.
+on a cold deep link, the same-origin `/api` proxy, security headers, the upload
+path from file picker through the rendered histogram, and a second-tab rescan
+traveling through Postgres NOTIFY, SSE, browser ETag revalidation, and aria-live.
 
 ## Gaps and future work
 
@@ -268,21 +289,23 @@ checked against, and the dashboard endpoint and event stream were added
 without touching the brief's original contract. The next steps follow the
 same grain.
 
-**Scaling for high concurrency.** The backend holds no state between
-requests; every request is a database transaction. That makes both scaling
-directions mechanical. Vertical first: more uvicorn workers and a larger
-connection pool on a bigger machine, budgeted against Postgres
-`max_connections`. Horizontal after: more backend containers behind nginx,
-then read replicas once dashboards and imports deserve separate machines.
-The SQL read path and the summary table exist so either direction works
-without code changes.
+**Scaling for high concurrency.** HTTP result state lives in PostgreSQL, but
+each backend process owns its SSE listener and subscriber queues. More uvicorn
+workers therefore need connection-pool budgeting against Postgres
+`max_connections`; more containers also need nginx fan-out and operational
+checks around every listener. Startup currently scans all results while briefly
+blocking imports so it can repair legacy summaries safely. Before a large
+fleet, move schema creation and reconciliation into one migration job rather
+than repeating that work in every process. Read replicas come after dashboards
+and imports deserve separate database capacity.
 
-**A queue for burst traffic.** Measured synchronous ingest absorbs about
-19,000 students/second. If exam-day spikes ever exceed that, the shape is
-accept-and-defer: persist the raw document, answer `202`, process in order.
-Imports are already idempotent, which is exactly the property a queue's
-replay semantics need; the trigger is written down here rather than built,
-because the measurements say it is not needed yet.
+**A queue for burst traffic.** Short isolated runs on this machine observed
+roughly 15,000-25,000 verified new students/second with one to four clients;
+that is evidence for this build, not a capacity promise. If production traces
+show exam-day spikes beyond the safe target established by soak testing, the
+shape is accept-and-defer: persist the raw document, answer `202`, and process
+in order. Imports are already idempotent, which is the property a queue's
+replay semantics need.
 
 **Tracing against abuse.** The structured access log already records every
 request with status and duration. The next layer is an append-only import
