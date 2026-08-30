@@ -1,8 +1,10 @@
 # Disposable benchmark overlay. It starts only PostgreSQL, the backend, and a
-# standard-library Python runner; no host ports or persistent data are used.
+# standard-library HTTP runner and a query-path comparison runner; no host
+# ports or persistent data are used.
 #
 #   docker compose -p markr-bench -f docker-compose.yml -f docker-compose.benchmark.yml up -d --build --wait db backend
 #   docker compose -p markr-bench -f docker-compose.yml -f docker-compose.benchmark.yml run --rm benchmark
+#   docker compose -p markr-bench -f docker-compose.yml -f docker-compose.benchmark.yml run --rm query-benchmark
 #   docker compose -p markr-bench -f docker-compose.yml -f docker-compose.benchmark.yml down -v
 
 services:
@@ -26,6 +28,23 @@ services:
     command: ["python", "scripts/benchmark.py", "http://backend:4567"]
     depends_on:
       backend:
+        condition: service_healthy
+
+  query-benchmark:
+    build:
+      context: ./backend
+      target: base
+    working_dir: /work
+    environment:
+      DATABASE_URL: postgresql+psycopg://markr:markr@db:5432/markr
+    volumes:
+      - type: bind
+        source: .
+        target: /work
+        read_only: true
+    command: ["python", "scripts/compare_query_paths.py"]
+    depends_on:
+      db:
         condition: service_healthy
 
 volumes: !override {}
