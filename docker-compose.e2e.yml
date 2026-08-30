@@ -1,0 +1,27 @@
+# Overlay for the end-to-end suite: the same images on different ports with
+# throwaway storage, so a run can never read or destroy development results
+# and both stacks can be up at once.
+#
+#   docker compose -p markr-e2e -f docker-compose.yml -f docker-compose.e2e.yml up -d --build
+#   docker compose -p markr-e2e -f docker-compose.yml -f docker-compose.e2e.yml down -v
+#
+# `!override` matters: compose merges list fields by appending, so without it
+# the base file's 4567 and 3000 mappings survive and collide with the
+# development stack.
+
+services:
+  db:
+    ports: !override []
+    # tmpfs, so the database dies with the container and no volume survives
+    # to leak state into the next run.
+    volumes: !override
+      - type: tmpfs
+        target: /var/lib/postgresql/data
+
+  backend:
+    ports: !override
+      - "4667:4567"
+
+  frontend:
+    ports: !override
+      - "3100:80"
