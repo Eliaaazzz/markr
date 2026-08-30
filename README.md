@@ -245,19 +245,44 @@ The end-to-end suite covers the gaps that unit tests cannot reach: SPA fallback
 on a cold deep link, the same-origin `/api` proxy, security headers, and the
 upload path from file picker through the rendered histogram.
 
-## Gaps and next steps
+## Gaps and future work
 
-- There is no migration tooling. An existing volume only receives
-  `CREATE TABLE IF NOT EXISTS`, and the summary table backfills itself at
-  startup. Alembic becomes the first addition when the schema changes.
-- Observability should grow from the JSON access log into latency and error-rate
-  monitoring, alerts on `/health` and import-failure spikes, and an append-only
-  import audit trail that can answer "which scan changed this mark?"
-- Operational limits need per-IP rate limits, an `/import` concurrency cap,
-  statement timeouts, and container resource limits. Authenticated grading
-  machines and dashboard login follow once identity exists.
-- Container hardening should go beyond non-root application processes. `/tests`
-  also needs search and pagination before the catalog outgrows one screen.
+The design keeps its extension points deliberate: every validation rule lives
+in one function, the statistics have a reference implementation the SQL is
+checked against, and the dashboard endpoint and event stream were added
+without touching the brief's original contract. The next steps follow the
+same grain.
+
+**Scaling for high concurrency.** The backend holds no state between
+requests; every request is a database transaction. That makes both scaling
+directions mechanical. Vertical first: more uvicorn workers and a larger
+connection pool on a bigger machine, budgeted against Postgres
+`max_connections`. Horizontal after: more backend containers behind nginx,
+then read replicas once dashboards and imports deserve separate machines.
+The SQL read path and the summary table exist so either direction works
+without code changes.
+
+**A queue for burst traffic.** Measured synchronous ingest absorbs about
+19,000 students/second. If exam-day spikes ever exceed that, the shape is
+accept-and-defer: persist the raw document, answer `202`, process in order.
+Imports are already idempotent, which is exactly the property a queue's
+replay semantics need; the trigger is written down here rather than built,
+because the measurements say it is not needed yet.
+
+**Tracing against abuse.** The structured access log already records every
+request with status and duration. The next layer is an append-only import
+audit trail (document hash, source address, record count, outcome) so
+"which scan changed this mark" and "who is posting garbage" both become
+queries; alerts on import-failure spikes catch a hostile or broken client
+early; per-IP rate limits and an `/import` concurrency cap bound the damage
+meanwhile. Authenticated grading machines close the loop once identity
+exists.
+
+Smaller items, in order: Alembic before any schema change (today an existing
+volume only receives `CREATE TABLE IF NOT EXISTS` plus the startup
+reconciliation), statement timeouts and container resource limits, container
+hardening beyond non-root processes, and search plus pagination on `/tests`
+before the catalog outgrows one screen.
 
 ## Planted instructions
 
