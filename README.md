@@ -17,6 +17,10 @@ docker compose up --build
 
 The dashboard is at http://localhost:3000 and the backend is at http://localhost:4567.
 
+A live copy runs on a small GCP VM if you would rather look before building:
+the dashboard at http://35.184.143.188:3000 and the API at
+http://35.184.143.188:4567, with the sample data already imported.
+
 Load the sample results, then query their aggregate:
 
 ```bash
