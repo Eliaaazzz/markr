@@ -1,0 +1,10 @@
+<mcq-test-results>
+    <mcq-test-result scanned-on="2017-01-01T00:00:00Z">
+        <first-name>Jimmmy</first-name>
+        <last-name>Student</last-name>
+        <student-number>99999999</student-number>
+        <test-id>78763</test-id>
+        <summary-marks available="10" obtained="2" />
+        <answer question="4 marks-available="1" marks-awarded="1">AC</answer>
+    </mcq-test-result>
+</mcq-test-results>

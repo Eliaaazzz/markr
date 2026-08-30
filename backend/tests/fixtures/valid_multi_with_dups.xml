@@ -1,0 +1,23 @@
+<mcq-test-results>
+    <mcq-test-result scanned-on="2017-12-04T12:12:10+11:00">
+        <first-name>Kara</first-name>
+        <last-name>Fold</last-name>
+        <student-number>1001</student-number>
+        <test-id>1234</test-id>
+        <summary-marks available="20" obtained="17" />
+    </mcq-test-result>
+    <mcq-test-result scanned-on="2017-12-04T12:14:10+11:00">
+        <first-name>Kara</first-name>
+        <last-name>Fold</last-name>
+        <student-number>1001</student-number>
+        <test-id>1234</test-id>
+        <summary-marks available="20" obtained="11" />
+    </mcq-test-result>
+    <mcq-test-result scanned-on="2017-12-04T12:15:10+11:00">
+        <first-name>Omar</first-name>
+        <last-name>Reed</last-name>
+        <student-number>1002</student-number>
+        <test-id>1234</test-id>
+        <summary-marks available="20" obtained="9" />
+    </mcq-test-result>
+</mcq-test-results>

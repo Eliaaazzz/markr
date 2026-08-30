@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<!DOCTYPE mcq-test-results [
+  <!ENTITY leak SYSTEM "file:///etc/passwd">
+]>
+<mcq-test-results>
+    <mcq-test-result>
+        <first-name>&leak;</first-name>
+        <last-name>Doe</last-name>
+        <student-number>3001</student-number>
+        <test-id>1234</test-id>
+        <summary-marks available="20" obtained="13" />
+    </mcq-test-result>
+</mcq-test-results>

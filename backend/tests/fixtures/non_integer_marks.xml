@@ -1,0 +1,9 @@
+<mcq-test-results>
+    <mcq-test-result scanned-on="2017-12-04T12:12:10+11:00">
+        <first-name>Wordy</first-name>
+        <last-name>Marks</last-name>
+        <student-number>2002</student-number>
+        <test-id>1234</test-id>
+        <summary-marks available="twenty" obtained="13" />
+    </mcq-test-result>
+</mcq-test-results>
