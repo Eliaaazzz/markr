@@ -452,7 +452,7 @@ def test_import_notifies_listeners_on_commit(client):
 def test_dashboard_guards_against_a_vanishing_test(client, monkeypatch):
     # Defensive branch: a version row without result rows cannot happen
     # today (nothing deletes), so it is pinned here instead.
-    monkeypatch.setattr(db, "fetch_version", lambda _id: 7)
+    monkeypatch.setattr(db, "fetch_freshness", lambda _id: (7, 1.0))
     monkeypatch.setattr(db, "fetch_dashboard", lambda _id: None)
     response = client.get("/results/1234/dashboard")
     assert response.status_code == 404
@@ -511,3 +511,23 @@ def test_concurrent_imports_keep_maxima_and_exact_counts(client):
     ]
     body = client.get("/results/ct/dashboard").json()
     assert body["aggregate"]["count"] == body["histogram"]["total"] == 80
+
+
+def test_etag_cannot_collide_across_database_rebuilds(client):
+    # Versions restart at the same numbers in a rebuilt database. A browser
+    # holding an ETag from the previous database must get fresh data, never
+    # a 304 that pins its cache to scores that no longer exist.
+    post_xml(client, single_result("1234", "1001", 20, 2))  # 10%
+    old_etag = client.get("/results/1234/dashboard").headers["etag"]
+
+    # Simulate `docker compose down -v` plus re-import.
+    with db.engine().begin() as conn:
+        conn.execute(sa.text("TRUNCATE student_results, test_summaries"))
+    post_xml(client, single_result("1234", "1001", 20, 18))  # 90%
+
+    response = client.get(
+        "/results/1234/dashboard", headers={"If-None-Match": old_etag}
+    )
+    assert response.status_code == 200
+    assert response.headers["etag"] != old_etag
+    assert response.json()["aggregate"]["mean"] == 90.0

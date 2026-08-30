@@ -276,19 +276,27 @@ def fetch_dashboard(test_id: str) -> dict | None:
     return {"aggregate": aggregate, "histogram": histogram}
 
 
-def fetch_version(test_id: str) -> int | None:
-    """The test's change counter, or None when the test is unknown.
+def fetch_freshness(test_id: str) -> tuple[int, float] | None:
+    """(version, updated_at epoch) for a test, or None when it is unknown.
 
     A single-row indexed read, so an unchanged poll costs almost nothing:
-    the dashboard endpoint compares this against If-None-Match and answers
-    304 without touching the results table at all.
+    the dashboard endpoint folds both values into its ETag and answers 304
+    without touching the results table. The timestamp matters as much as
+    the counter: versions restart when a database is rebuilt, so a counter
+    alone could collide with an ETag a browser cached against the previous
+    database and serve it stale results forever.
     """
     with engine().connect() as conn:
         row = conn.execute(
-            sa.text("SELECT version FROM test_summaries WHERE test_id = :test_id"),
+            sa.text(
+                "SELECT version, updated_at FROM test_summaries "
+                "WHERE test_id = :test_id"
+            ),
             {"test_id": test_id},
         ).one_or_none()
-    return row.version if row is not None else None
+    if row is None:
+        return None
+    return row.version, row.updated_at.timestamp()
 
 
 _LIST_TESTS = sa.text("""

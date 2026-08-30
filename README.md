@@ -28,14 +28,16 @@ curl http://localhost:4567/results/9863/aggregate
 # {"mean":50.8,"stddev":9.92,"min":30.0,"max":75.0,"p25":45.0,"p50":50.0,"p75":55.0,"count":81}
 ```
 
-`bash example-requests.sh import_sample` runs the first request. To remove the stored results and start clean, run `docker compose down -v`.
+`bash example-requests.sh import_sample` runs the first request. Marks only
+ever merge upward, so to reproduce the numbers above exactly, start from an
+empty database: `docker compose down -v` first if the volume has old data.
 
 ## API
 
 - `POST /import` accepts Content-Type `text/xml+markr`. A successful import returns `200 {"imported": N}`. Any bad document returns `400 {"error": "..."}` and persists nothing. A record-level validation error identifies the offending record.
 - `GET /results/:test-id/aggregate` returns mean, stddev, min, max, p25, p50, p75, and student count. The statistics are percentages. An unknown id returns `404`.
 - `GET /results/:test-id/histogram` returns all ten fixed ten-point bins. The final bin is closed, so a perfect score belongs to [90, 100].
-- `GET /results/:test-id/dashboard` returns the aggregate and histogram from one statement. Its `ETag` is version-based. An unchanged request carrying `If-None-Match` gets a `304` after one single-row read. The frontend polls this route.
+- `GET /results/:test-id/dashboard` returns the aggregate and histogram from one statement. Its `ETag` combines the test's version counter with its last-change timestamp, so an unchanged request carrying `If-None-Match` gets a `304` from one single-row read, and an ETag cached against a rebuilt database can never pin a browser to stale scores. The frontend polls this route.
 - `GET /events` is a server-sent event stream. It emits one line for each test whose results have just changed, fed by PostgreSQL LISTEN/NOTIFY.
 - `GET /tests` returns every known test in ascending id order.
 - `GET /health` drives the Compose healthcheck.
@@ -54,6 +56,16 @@ That transaction also refreshes a summary row for each test. The row holds the
 student count, marks available, and a version counter. The transaction queues a
 change notification as well. An idempotent re-import writes nothing, leaves the
 version alone, and sends no notification.
+
+Grading machines post concurrently, and two details keep that safe. Upsert
+rows are sorted before the statement runs, so every import acquires its row
+locks in the same global order and two documents sharing students can never
+deadlock. The summary refresh locks the summary rows first and recomputes the
+count in a following statement; under READ COMMITTED a single combined
+statement could take its snapshot before a concurrent import committed, then
+overwrite the summary with a stale count once the lock cleared. A test drives
+eight threads of interleaved documents, with shared students listed in
+opposing orders, and asserts exact final maxima and an exact summary count.
 
 Result reads stay in SQL. One statement calculates all eight statistics and all
 ten histogram bins, so every value in a dashboard response comes from the same
@@ -112,6 +124,10 @@ nginx serves the frontend bundle and proxies `/api/` to the backend. The browser
 - The brief requires failures to return 400, and document faults do. A backend
   fault returns 500 because a false 400 could send a work experience kid to
   hand-key results that were already stored. This is a deliberate deviation.
+- `/tests` orders ascending with all-digit ids compared numerically, so
+  "2" lists before "10". The brief's examples are numeric strings; showing
+  the Minister 1, 2, 10 rather than 1, 10, 2 seemed like the reading that
+  keeps everyone employed.
 - Percentages use each student's own available marks. Standard deviation is the
   population form established by the brief's worked example. Quartiles use R-7
   linear interpolation, the numpy and spreadsheet default. Tests pin that
@@ -122,7 +138,9 @@ nginx serves the frontend bundle and proxies `/api/` to the backend. The browser
 The first implementation fetched every row for a test and calculated statistics in
 Python on every poll. I measured that version before moving the work. All figures
 below came from the same laptop setup: Docker Desktop, client and server on one
-machine, and a small threaded load generator. They show the shape of the change.
+machine, and the load generator now committed as `scripts/benchmark.py`, so the
+run is repeatable (`python scripts/benchmark.py` against a running stack). The
+figures show the shape of the change; absolute numbers move with hardware.
 
 The rework had four parts:
 
@@ -175,13 +193,13 @@ if exam-day bursts exceed synchronous capacity.
 
 ## Tests
 
-There are 162 tests across three suites. The backend has 116 tests and is gated at
+There are 163 tests across three suites. The backend has 117 tests and is gated at
 100% statement coverage, the frontend has 28 tests, and the end-to-end suite has
 18 specs. Everything runs with Docker and npm. Run these blocks in order from the
 repository root.
 
 ```bash
-# backend: 116 tests, 34 of them against real Postgres; the run fails
+# backend: 117 tests, 35 of them against real Postgres; the run fails
 # unless statement coverage is 100%
 docker compose up -d --wait db
 docker build --target test -t markr-backend-test ./backend
@@ -192,16 +210,20 @@ docker run --rm --network markr_default \
 
 ```bash
 # frontend: 28 component tests (Vitest + Testing Library)
-npm --prefix frontend install
-npm --prefix frontend test
+cd frontend
+npm ci
+npm test
+cd ..
 ```
 
 ```bash
 # end to end: 18 Playwright specs against an isolated stack (ports 3100
 # and 4667, tmpfs database), so a run can never touch development data
-npx --prefix frontend playwright install chromium
 docker compose -p markr-e2e -f docker-compose.yml -f docker-compose.e2e.yml up -d --build --wait
-npm --prefix frontend run test:e2e
+cd frontend
+npx playwright install chromium
+npm run test:e2e
+cd ..
 docker compose -p markr-e2e -f docker-compose.yml -f docker-compose.e2e.yml down -v
 ```
 

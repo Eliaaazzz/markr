@@ -159,10 +159,11 @@ def get_dashboard(test_id: str, request: Request, response: Response):
     """
     if not is_queryable_id(test_id):
         return error(404, "Not found")
-    version = db.fetch_version(test_id)
-    if version is None:
+    freshness = db.fetch_freshness(test_id)
+    if freshness is None:
         return error(404, "Not found")
-    etag = f'W/"{test_id}-{version}"'
+    version, stamp = freshness
+    etag = f'W/"{test_id}-{version}-{int(stamp * 1_000_000)}"'
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers={"ETag": etag})
     payload = db.fetch_dashboard(test_id)
