@@ -8,6 +8,11 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
+# `docker run --rm` on this stage executes the component suite; the build
+# stage above has already installed dependencies and type-checked.
+FROM build AS test
+CMD ["npm", "test"]
+
 FROM nginx:1.27-alpine
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf

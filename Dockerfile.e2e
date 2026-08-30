@@ -1,0 +1,21 @@
+# Runs the Playwright suite from inside Docker, so a reviewer needs no
+# local Node or browsers. Point it at the isolated e2e stack:
+#
+#   docker compose -p markr-e2e -f docker-compose.yml -f docker-compose.e2e.yml up -d --build --wait
+#   docker build -f Dockerfile.e2e -t markr-e2e-runner .
+#   docker run --rm --network markr-e2e_default -e E2E_BASE_URL=http://frontend markr-e2e-runner
+#
+# The image version matches @playwright/test in frontend/package-lock.json,
+# which is what ships the right browser builds preinstalled.
+FROM mcr.microsoft.com/playwright:v1.48.2-jammy
+
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+COPY frontend/playwright.config.ts ./
+COPY frontend/e2e ./e2e
+# The specs read the sample fixture from the repo root, two levels up.
+COPY sample_results.xml /app/sample_results.xml
+
+CMD ["npx", "playwright", "test"]

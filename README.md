@@ -139,8 +139,13 @@ The first implementation fetched every row for a test and calculated statistics 
 Python on every poll. I measured that version before moving the work. All figures
 below came from the same laptop setup: Docker Desktop, client and server on one
 machine, and the load generator now committed as `scripts/benchmark.py`, so the
-run is repeatable (`python scripts/benchmark.py` against a running stack). The
-figures show the shape of the change; absolute numbers move with hardware.
+run is repeatable against a running stack without any local Python:
+
+```bash
+docker run --rm --network markr_default -v "$PWD:/work" -w /work   python:3.12-slim python scripts/benchmark.py http://backend:4567
+```
+
+The figures show the shape of the change; absolute numbers move with hardware.
 
 The rework had four parts:
 
@@ -195,8 +200,8 @@ if exam-day bursts exceed synchronous capacity.
 
 There are 163 tests across three suites. The backend has 117 tests and is gated at
 100% statement coverage, the frontend has 28 tests, and the end-to-end suite has
-18 specs. Everything runs with Docker and npm. Run these blocks in order from the
-repository root.
+18 specs. Every suite runs inside Docker; no local Node, Python, or browsers are
+needed on any platform. Run these blocks in order from the repository root.
 
 ```bash
 # backend: 117 tests, 35 of them against real Postgres; the run fails
@@ -210,20 +215,16 @@ docker run --rm --network markr_default \
 
 ```bash
 # frontend: 28 component tests (Vitest + Testing Library)
-cd frontend
-npm ci
-npm test
-cd ..
+docker build --target test -t markr-frontend-test ./frontend
+docker run --rm markr-frontend-test
 ```
 
 ```bash
 # end to end: 18 Playwright specs against an isolated stack (ports 3100
 # and 4667, tmpfs database), so a run can never touch development data
 docker compose -p markr-e2e -f docker-compose.yml -f docker-compose.e2e.yml up -d --build --wait
-cd frontend
-npx playwright install chromium
-npm run test:e2e
-cd ..
+docker build -f Dockerfile.e2e -t markr-e2e-runner .
+docker run --rm --network markr-e2e_default -e E2E_BASE_URL=http://frontend markr-e2e-runner
 docker compose -p markr-e2e -f docker-compose.yml -f docker-compose.e2e.yml down -v
 ```
 

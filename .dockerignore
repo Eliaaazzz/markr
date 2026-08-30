@@ -1,0 +1,7 @@
+# Dockerfile.e2e builds from the repo root; send it only what it copies.
+*
+!frontend/package.json
+!frontend/package-lock.json
+!frontend/playwright.config.ts
+!frontend/e2e/
+!sample_results.xml
