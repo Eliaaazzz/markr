@@ -71,7 +71,7 @@ export function useLiveTestData(testId: string): LiveTestData {
       aborter = new AbortController();
       abortTimer = window.setTimeout(() => aborter?.abort(), FETCH_TIMEOUT_MS);
       try {
-        const { aggregate, histogram } = await fetchDashboard(
+        const { aggregate, histogram, changeToken } = await fetchDashboard(
           testId,
           aborter.signal,
         );
@@ -79,8 +79,8 @@ export function useLiveTestData(testId: string): LiveTestData {
           return;
         }
         const now = new Date();
-        const snapshot = JSON.stringify({ aggregate, histogram });
-        const changed = baseline.current !== null && baseline.current !== snapshot;
+        const changed =
+          baseline.current !== null && baseline.current !== changeToken;
         let announcement: string | null = null;
         if (lastPhase.current === "ready" && changed) {
           announcement =
@@ -91,7 +91,7 @@ export function useLiveTestData(testId: string): LiveTestData {
             `Results arrived at ${now.toLocaleTimeString()}: ` +
             `${aggregate.count} students.`;
         }
-        baseline.current = snapshot;
+        baseline.current = changeToken;
         lastPhase.current = "ready";
         setState((prev) => ({
           phase: "ready",

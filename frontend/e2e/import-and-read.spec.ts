@@ -98,4 +98,46 @@ test.describe("import and read", () => {
     await page.goto("/tests/9863");
     await expect(page.getByRole("definition")).toHaveText(before);
   });
+
+  test("announces a live rescan even when rounded values stay equal", async ({
+    context,
+    page,
+  }) => {
+    const testId = `e2e-live-${Date.now()}`;
+    const records = Array.from({ length: 9 }, (_, index) => {
+      const score = (index + 1) * 1000;
+      return `<mcq-test-result>
+        <student-number>${score}</student-number>
+        <test-id>${testId}</test-id>
+        <summary-marks available="10000" obtained="${score}" />
+      </mcq-test-result>`;
+    }).join("");
+    const seeded = await page.request.post("/api/import", {
+      headers: { "Content-Type": "text/xml+markr" },
+      data: `<mcq-test-results>${records}</mcq-test-results>`,
+    });
+    expect(seeded.ok()).toBe(true);
+
+    await page.goto(`/tests/${testId}`);
+    const definitions = page.getByRole("definition");
+    await expect(definitions).toHaveCount(8);
+    const before = await definitions.allTextContents();
+    await expect(page.getByRole("status")).toBeEmpty();
+
+    const uploader = await context.newPage();
+    await uploadXml(
+      uploader,
+      "tiny-rescan.xml",
+      documentFor(testId, "4000", 10_000, 4001),
+      { navigate: true },
+    );
+    await uploader.getByRole("button", { name: "Upload" }).click();
+    await expect(uploader.getByRole("status")).toHaveText("Imported 1 record.");
+
+    await expect(page.getByRole("status")).toContainText("Results updated", {
+      timeout: 10_000,
+    });
+    await expect(definitions).toHaveText(before);
+    await uploader.close();
+  });
 });

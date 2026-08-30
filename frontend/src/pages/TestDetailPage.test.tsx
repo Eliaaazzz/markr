@@ -15,10 +15,11 @@ vi.mock("../lib/api", async (importOriginal) => {
 
 const dashboardMock = vi.mocked(fetchDashboard);
 
-function resolveWith(count: number) {
+function resolveWith(count: number, changeToken = `version-${count}`) {
   dashboardMock.mockResolvedValue({
     aggregate: aggregate(count),
     histogram: histogram(count),
+    changeToken,
   });
 }
 
@@ -100,6 +101,23 @@ describe("TestDetailPage", () => {
     const announced = status.textContent;
 
     await flushPolling(5000); // still 82 students: the region must not change
+    expect(screen.getByRole("status").textContent).toBe(announced);
+  });
+
+  it("announces a version change even when rounded display values stay equal", async () => {
+    resolveWith(81, "version-a");
+    renderPage();
+    await flushPolling();
+    expect(screen.getByRole("status")).toHaveTextContent("");
+
+    resolveWith(81, "version-b");
+    await flushPolling(5000);
+    const status = screen.getByRole("status");
+    expect(status.textContent).toMatch(/^Results updated at .*: 81 students/);
+    const announced = status.textContent;
+
+    resolveWith(81, "version-b");
+    await flushPolling(5000);
     expect(screen.getByRole("status").textContent).toBe(announced);
   });
 

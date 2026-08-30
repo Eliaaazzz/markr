@@ -36,7 +36,7 @@ export class NotFoundError extends Error {
   }
 }
 
-async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+async function getResponse(path: string, signal?: AbortSignal): Promise<Response> {
   const response = await fetch(`/api${path}`, { signal });
   if (response.status === 404) {
     throw new NotFoundError(path);
@@ -44,6 +44,11 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   if (!response.ok) {
     throw new Error(`GET ${path} failed with status ${response.status}`);
   }
+  return response;
+}
+
+async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const response = await getResponse(path, signal);
   return response.json() as Promise<T>;
 }
 
@@ -77,17 +82,29 @@ export type Dashboard = {
   histogram: Histogram;
 };
 
+export type DashboardSnapshot = Dashboard & {
+  changeToken: string;
+};
+
 // One request instead of two, so the count and the distribution always come
 // from the same database read and a poll racing an import cannot show a
 // student total that disagrees with its own histogram.
-export function fetchDashboard(
+export async function fetchDashboard(
   testId: string,
   signal?: AbortSignal,
-): Promise<Dashboard> {
-  return getJson<Dashboard>(
-    `/results/${encodeURIComponent(testId)}/dashboard`,
-    signal,
-  );
+): Promise<DashboardSnapshot> {
+  const path = `/results/${encodeURIComponent(testId)}/dashboard`;
+  const response = await getResponse(path, signal);
+  const dashboard = (await response.json()) as Dashboard;
+  // The ETag moves for every committed result change, including one too small
+  // to alter the rounded display values. Keep it opaque; the JSON fallback is
+  // for non-Markr test doubles or an intermediary that strips the header.
+  const changeToken =
+    response.headers.get("ETag") ?? `body:${JSON.stringify(dashboard)}`;
+  return {
+    ...dashboard,
+    changeToken,
+  };
 }
 
 export async function importResults(

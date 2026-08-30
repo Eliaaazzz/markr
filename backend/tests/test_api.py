@@ -404,6 +404,28 @@ def test_dashboard_etag_answers_304_until_results_change(client):
     assert changed.json()["aggregate"]["count"] == 2
 
 
+def test_etag_changes_when_rounded_dashboard_values_do_not(client):
+    # A tiny non-boundary rescan in a larger set can leave every two-decimal
+    # statistic and histogram bin unchanged. The ETag is the frontend's
+    # canonical signal that a real result still arrived.
+    for score in range(1000, 10_000, 1000):
+        post_xml(
+            client,
+            single_result("rounded-token", str(score), 10_000, score),
+        )
+    before = client.get("/results/rounded-token/dashboard")
+
+    post_xml(client, single_result("rounded-token", "4000", 10_000, 4001))
+    after = client.get(
+        "/results/rounded-token/dashboard",
+        headers={"If-None-Match": before.headers["etag"]},
+    )
+
+    assert after.status_code == 200
+    assert after.headers["etag"] != before.headers["etag"]
+    assert after.json() == before.json()
+
+
 def test_idempotent_reimport_keeps_the_etag_stable(client):
     # No rows change, so the version must not move and every polling
     # dashboard keeps riding the 304 path.
