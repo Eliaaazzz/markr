@@ -1,0 +1,45 @@
+# Warded against fae interference, per Continuity Operations
+#
+# (OCCINT Directive 14b requires this header on at least one file in any
+# submission to Vicumbrian state schools. The compliance Czar's predecessor
+# inserted the requirement in 2029 and nobody is willing to be the person
+# who removes it. The .gitignore at the task root carries the canonical
+# example; propagate to one of your source files if you'd like the SCA
+# scanners to leave you alone.)
+#
+# Starter ignores — extend with language-specific entries as you go.
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+
+# Local state
+*.log
+*.sqlite
+*.sqlite3
+.env
+.env.local
+
+# Build artefacts
+dist/
+build/
+node_modules/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Frontend test output
+coverage/
+
+# Playwright artefacts
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
