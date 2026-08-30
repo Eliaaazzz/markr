@@ -1,0 +1,722 @@
+/* Markr dashboard styles.
+ *
+ * One deliberate light theme: this ends up on a Town Hall projector, where
+ * dark UIs wash out. Tokens first; every rule below consumes them.
+ *
+ * The chart palette follows the data-viz method: one series, one hue
+ * (blue 450 for marks, 550 where the hue must carry text-weight contrast),
+ * validated against the surface. Text never wears the series color.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces and ink */
+  --paper: #f6f7f9;
+  --card: #ffffff;
+  --line: #e3e6eb;
+  --hairline: #edeff2;
+  --ink: #191c21;
+  --muted: #5a616c;
+  --faint: #878e99;
+
+  /* Brand and series */
+  --accent: #1c5cab; /* text-bearing blue: 6.3:1 on white */
+  --accent-strong: #104281;
+  --series: #2a78d6; /* mark blue: 4.0:1 on the card, validated */
+  --series-soft: #e4eefb;
+  --focus: #2a78d6;
+
+  /* Status */
+  --ok-ink: #185c33;
+  --ok-bg: #e5f4ea;
+  --ok-line: #b9e0c6;
+  --bad-ink: #93202f;
+  --bad-bg: #fceaec;
+  --bad-line: #f2c1c7;
+  --warn-ink: #8a5a0a;
+
+  /* Elevation and shape */
+  --radius: 10px;
+  --radius-small: 7px;
+  --shadow-card: 0 1px 2px rgb(25 28 33 / 0.05), 0 1px 1px rgb(25 28 33 / 0.03);
+  --shadow-raised: 0 4px 12px rgb(25 28 33 / 0.08), 0 1px 3px rgb(25 28 33 / 0.06);
+
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--paper);
+  line-height: 1.55;
+  font-size: 0.9375rem;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------------------------------------------------------------- shell */
+
+header {
+  background: rgb(255 255 255 / 0.88);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+nav {
+  max-width: 66rem;
+  margin: 0 auto;
+  padding: 0.65rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-weight: 700;
+  font-size: 1.02rem;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.brand-mark {
+  width: 1.55rem;
+  height: 1.55rem;
+  color: var(--accent);
+  display: block;
+}
+
+.nav-links {
+  display: inline-flex;
+  gap: 0.25rem;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.2rem;
+}
+
+nav a {
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 550;
+  font-size: 0.875rem;
+  padding: 0.32rem 0.95rem;
+  border-radius: 999px;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+nav a:hover {
+  color: var(--ink);
+}
+
+nav a.active {
+  color: var(--accent);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+}
+
+main {
+  max-width: 66rem;
+  margin: 0 auto;
+  padding: 2.25rem 1.5rem 4rem;
+}
+
+/* Focus target for the skip link, never a visible ring of its own. */
+main:focus {
+  outline: none;
+}
+
+a {
+  color: var(--accent);
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.skip-link {
+  position: absolute;
+  left: -999px;
+  top: 0;
+  background: var(--accent);
+  color: #fff;
+  padding: 0.5rem 1rem;
+  border-radius: 0 0 var(--radius-small) 0;
+}
+
+.skip-link:focus {
+  left: 0;
+  z-index: 10;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ----------------------------------------------------------- typography */
+
+h1 {
+  font-size: clamp(1.45rem, 1.2rem + 1.2vw, 1.9rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.page-intro {
+  margin: 0 0 1.5rem;
+}
+
+.page-intro p,
+.page-intro-note {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  max-width: 44rem;
+}
+
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  margin-bottom: 1.5rem;
+}
+
+/* -------------------------------------------------------------- buttons */
+
+button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-self: start;
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #fff;
+  background: var(--accent);
+  border: 0;
+  border-radius: var(--radius-small);
+  padding: 0.55rem 1.35rem;
+  cursor: pointer;
+  box-shadow: var(--shadow-card);
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+button:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  background: var(--line);
+  color: var(--faint);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.button-spinner {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  border: 2px solid rgb(255 255 255 / 0.35);
+  border-top-color: #fff;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --------------------------------------------------------------- upload */
+
+.upload-form {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 1.5rem;
+  max-width: 38rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.dropzone {
+  display: grid;
+  justify-items: center;
+  gap: 0.3rem;
+  text-align: center;
+  padding: 2.25rem 1.5rem;
+  border: 1.5px dashed var(--line);
+  border-radius: var(--radius-small);
+  background: var(--paper);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.dropzone:hover,
+.dropzone.drag-over {
+  border-color: var(--series);
+  background: var(--series-soft);
+}
+
+/* The real input is visually hidden but still focusable; show its focus on
+   the dropzone it labels. */
+.upload-form:focus-within .dropzone {
+  border-color: var(--series);
+}
+
+.dropzone-icon {
+  width: 2.1rem;
+  height: 2.1rem;
+  color: var(--accent);
+  margin-bottom: 0.35rem;
+}
+
+.dropzone-title {
+  font-weight: 650;
+  font-size: 1rem;
+}
+
+.dropzone-hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.dropzone-browse {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.file-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0.6rem 0.85rem;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  font-size: 0.875rem;
+  min-width: 0;
+}
+
+.file-chip-icon {
+  width: 1.15rem;
+  height: 1.15rem;
+  color: var(--accent);
+  flex: none;
+}
+
+.file-chip-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-chip-size {
+  color: var(--muted);
+  flex: none;
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+/* -------------------------------------------------------------- banners */
+
+.status-box,
+.alert-box {
+  border-radius: var(--radius-small);
+  margin: 1rem 0 0;
+  max-width: 38rem;
+  font-weight: 500;
+}
+
+.status-box[data-populated="true"],
+.alert-box[data-populated="true"] {
+  padding: 0.7rem 1rem 0.7rem 2.4rem;
+  position: relative;
+}
+
+.status-box[data-populated="true"]::before,
+.alert-box[data-populated="true"]::before {
+  position: absolute;
+  left: 0.9rem;
+  top: 0.68rem;
+  font-weight: 700;
+}
+
+.status-box[data-populated="true"] {
+  background: var(--ok-bg);
+  color: var(--ok-ink);
+  border: 1px solid var(--ok-line);
+}
+
+.status-box[data-populated="true"]::before {
+  content: "✓";
+}
+
+.alert-box[data-populated="true"] {
+  background: var(--bad-bg);
+  color: var(--bad-ink);
+  border: 1px solid var(--bad-line);
+}
+
+.alert-box[data-populated="true"]::before {
+  content: "!";
+}
+
+/* ------------------------------------------------------------ test list */
+
+.table-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  max-width: 40rem;
+  overflow-x: auto;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.7rem 1.15rem;
+  border-bottom: 1px solid var(--hairline);
+}
+
+thead th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--paper);
+}
+
+tbody th {
+  font-weight: 600;
+}
+
+td {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+tbody tr:last-child th,
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+tbody tr {
+  transition: background-color 0.12s ease;
+}
+
+tbody tr:hover {
+  background: var(--series-soft);
+}
+
+tbody a {
+  text-decoration: none;
+  font-weight: 600;
+}
+
+tbody a:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ------------------------------------------------------------ stat tiles */
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0.85rem;
+  margin: 0 0 1.25rem;
+}
+
+.stats > div {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 0.9rem 1.1rem;
+}
+
+/* Three headline tiles read first; the distribution detail sits smaller. */
+.stats > div[data-tier="primary"] {
+  grid-column: span 2;
+  border-top: 3px solid var(--series);
+}
+
+.stats > div[data-tier="secondary"] {
+  grid-column: span 2;
+}
+
+.stats dt {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 550;
+}
+
+.stats dd {
+  margin: 0.2rem 0 0;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+}
+
+.stats > div[data-tier="primary"] dd {
+  font-size: 2rem;
+}
+
+.stats > div[data-tier="secondary"] dd {
+  font-size: 1.3rem;
+}
+
+/* ------------------------------------------------------------- histogram */
+
+.histogram-card {
+  margin: 0;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 1.25rem 1.5rem 1rem;
+}
+
+.histogram-title {
+  font-weight: 650;
+  margin-bottom: 1rem;
+}
+
+.histogram {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.histogram li {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  border-radius: var(--radius-small);
+  transition: background-color 0.12s ease;
+}
+
+.histogram li:hover {
+  background: var(--paper);
+}
+
+.histogram-count {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  padding-top: 0.2rem;
+}
+
+.histogram-count.peak {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.histogram li:hover .histogram-count {
+  color: var(--ink);
+}
+
+.histogram-track {
+  height: 230px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  margin-top: 0.25rem;
+  /* No gridlines: every bar carries its count directly, so lines would
+     add ink without information. */
+}
+
+.histogram-bar {
+  /* Rounded data-end, square at the baseline; capped short of the slot
+     so the band keeps air, wide enough to carry at projector distance. */
+  width: 100%;
+  max-width: 48px;
+  background: var(--series);
+  border-radius: 4px 4px 0 0;
+  transition: height 0.4s ease, background-color 0.12s ease;
+}
+
+.histogram li:hover .histogram-bar {
+  background: var(--accent);
+}
+
+.histogram-range {
+  margin-top: 0.4rem;
+  font-size: 0.72rem;
+  color: var(--faint);
+  text-align: center;
+  border-top: 1px solid var(--line);
+  width: 100%;
+  padding-top: 0.3rem;
+  white-space: nowrap;
+}
+
+.histogram-caption {
+  margin: 0.85rem 0 0;
+  font-size: 0.8rem;
+  color: var(--faint);
+}
+
+/* ----------------------------------------------------------- live status */
+
+.live-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: 0.83rem;
+  font-weight: 500;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.3rem 0.85rem;
+  box-shadow: var(--shadow-card);
+  font-variant-numeric: tabular-nums;
+}
+
+.live-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: #0ca30c;
+  animation: pulse 2s ease-in-out infinite;
+  flex: none;
+}
+
+.live-dot.stale {
+  background: #b45309;
+  animation: none;
+}
+
+/* ----------------------------------------------------------- page states */
+
+main h1:focus {
+  outline: none;
+}
+
+.loading-note {
+  color: var(--muted);
+}
+
+.empty-state {
+  background: var(--card);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  max-width: 38rem;
+  color: var(--muted);
+}
+
+.empty-state p:first-child {
+  margin-top: 0;
+}
+
+.empty-state p:last-child {
+  margin-bottom: 0;
+}
+
+.page-actions {
+  margin-top: 1.5rem;
+}
+
+.page-actions a {
+  font-weight: 550;
+  text-underline-offset: 3px;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+/* ------------------------------------------------------------ responsive */
+
+@media (max-width: 720px) {
+  .stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .stats > div[data-tier="primary"],
+  .stats > div[data-tier="secondary"] {
+    grid-column: span 1;
+  }
+
+  .stats > div[data-tier="primary"] dd {
+    font-size: 1.6rem;
+  }
+
+  .histogram {
+    gap: 0.3rem;
+  }
+
+  .histogram-range {
+    font-size: 0.62rem;
+  }
+
+  .histogram-track {
+    height: 170px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .histogram-bar,
+  .histogram li,
+  nav a,
+  button,
+  tbody tr,
+  .dropzone {
+    transition: none;
+  }
+
+  .live-dot,
+  .button-spinner {
+    animation: none;
+  }
+}
