@@ -41,12 +41,19 @@ CREATE TABLE IF NOT EXISTS test_summaries (
 )
 """
 
-# Startup reconciliation: recompute every summary from the result rows,
-# creating missing rows and correcting any an older version left wrong. The
-# guard means a routine restart changes nothing and bumps no versions, so
-# fleet ETags survive deploys; only a summary that actually disagrees with
-# its rows gets rewritten, and its version moves because what dashboards
-# display changes with it.
+# Startup reconciliation must not take its aggregate snapshot while an import
+# is in flight. Imports hold ROW EXCLUSIVE on student_results before they touch
+# test_summaries; taking this self-conflicting lock in the same order waits out
+# old writers, serialises concurrent startups, and still lets dashboard reads
+# continue. The following statement then gets a fresh READ COMMITTED snapshot.
+_SUMMARY_RECONCILE_LOCK = """
+LOCK TABLE student_results IN SHARE ROW EXCLUSIVE MODE
+"""
+
+# Recompute every summary from the result rows, creating missing rows and
+# correcting any an older version left wrong. The guard means a routine
+# restart changes nothing and bumps no versions, so fleet ETags survive
+# deploys; only a summary that actually disagrees with its rows gets rewritten.
 _SUMMARY_RECONCILE = """
 INSERT INTO test_summaries (test_id, student_count, marks_available)
 SELECT test_id, COUNT(*), MAX(marks_available)
@@ -92,6 +99,7 @@ def init(attempts: int = 30, delay: float = 1.0) -> None:
         try:
             with _engine.begin() as conn:
                 conn.execute(sa.text(_SCHEMA))
+                conn.execute(sa.text(_SUMMARY_RECONCILE_LOCK))
                 conn.execute(sa.text(_SUMMARY_SCHEMA))
                 conn.execute(sa.text(_SUMMARY_RECONCILE))
             return

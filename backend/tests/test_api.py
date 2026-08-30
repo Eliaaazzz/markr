@@ -468,6 +468,115 @@ def test_startup_reconciles_a_summary_an_older_version_left_wrong(client):
     assert fresh.status_code == 200  # the corrected summary re-tagged
 
 
+def test_startup_reconcile_waits_for_a_live_import_before_aggregating(
+    client, monkeypatch
+):
+    """A rolling startup must not overwrite a concurrent import's summary.
+
+    The writer holds an accurate but uncommitted count while init starts. We
+    wait until Postgres itself reports init as blocked by that writer, then
+    commit. This fixes the statement ordering without relying on scheduler
+    timing: the old combined aggregate/upsert took its stale snapshot before
+    this wait and deterministically restored count 1 afterwards.
+    """
+    import threading
+    import time
+    from uuid import uuid4
+
+    from sqlalchemy.engine import make_url
+
+    post_xml(client, single_result("startup-race", "1001", 20, 13))
+    original_engine = db.engine()
+    application_name = f"markr-reconcile-{uuid4().hex}"
+    reconcile_url = make_url(db.database_url()).update_query_dict(
+        {"application_name": application_name}
+    )
+    monkeypatch.setenv(
+        "DATABASE_URL", reconcile_url.render_as_string(hide_password=False)
+    )
+    errors = []
+
+    def reconcile():
+        try:
+            db.init(attempts=1)
+        except BaseException as exc:  # surfaced below in the test thread
+            errors.append(exc)
+
+    thread = threading.Thread(target=reconcile)
+    with original_engine.connect() as writer:
+        with writer.begin():
+            writer_pid = writer.execute(sa.text("SELECT pg_backend_pid()")).scalar_one()
+            writer.execute(
+                sa.text(
+                    """
+                    INSERT INTO student_results (
+                        test_id, student_number, marks_available, marks_obtained
+                    ) VALUES ('startup-race', '1002', 30, 15)
+                    """
+                )
+            )
+            expected_version = writer.execute(
+                sa.text(
+                    """
+                    UPDATE test_summaries SET
+                        student_count = 2,
+                        marks_available = 30,
+                        version = version + 1,
+                        updated_at = now()
+                    WHERE test_id = 'startup-race'
+                    RETURNING version
+                    """
+                )
+            ).scalar_one()
+            thread.start()
+
+            deadline = time.monotonic() + 5
+            blocked_by_writer = False
+            with original_engine.connect() as observer:
+                while time.monotonic() < deadline:
+                    blockers = observer.execute(
+                        sa.text(
+                            """
+                            SELECT pg_blocking_pids(pid)
+                            FROM pg_stat_activity
+                            WHERE application_name = :application_name
+                              AND state = 'active'
+                            """
+                        ),
+                        {"application_name": application_name},
+                    ).scalar_one_or_none()
+                    if blockers is not None and writer_pid in blockers:
+                        blocked_by_writer = True
+                        break
+                    time.sleep(0.01)
+
+        # The context commits here, releasing init only after the blocking
+        # relationship above has made the interleaving deterministic.
+
+    thread.join(timeout=5)
+    assert blocked_by_writer, "startup never waited behind the live import"
+    assert not thread.is_alive(), (
+        "startup did not finish after the import committed"
+    )
+    assert errors == []
+
+    with db.engine().connect() as conn:
+        actual_count = conn.execute(
+            sa.text(
+                "SELECT count(*) FROM student_results "
+                "WHERE test_id = 'startup-race'"
+            )
+        ).scalar_one()
+        summary = conn.execute(
+            sa.text(
+                "SELECT student_count, marks_available, version "
+                "FROM test_summaries WHERE test_id = 'startup-race'"
+            )
+        ).one()
+    assert actual_count == 2
+    assert tuple(summary) == (2, 30, expected_version)
+
+
 def test_routine_restarts_leave_versions_alone(client):
     # Reconciliation must be a no-op on healthy data, or every deploy would
     # invalidate every dashboard's ETag at once.
