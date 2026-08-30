@@ -426,6 +426,42 @@ def test_summary_backfill_restores_a_pre_summary_volume(client):
     assert listed[0]["student_count"] == 1
 
 
+def test_startup_reconciles_a_summary_an_older_version_left_wrong(client):
+    # An upgrade from a version with the summary race must correct damaged
+    # counts on its first boot, and move the version so ETags refresh.
+    post_xml(client, single_result("1234", "1001", 20, 13))
+    post_xml(client, single_result("1234", "1002", 20, 15))
+    with db.engine().begin() as conn:
+        conn.execute(
+            sa.text(
+                "UPDATE test_summaries SET student_count = 1 "
+                "WHERE test_id = '1234'"
+            )
+        )
+    stale_etag = client.get("/results/1234/dashboard").headers["etag"]
+
+    db.init(attempts=1)  # what the upgraded deployment runs at startup
+    listed = client.get("/tests").json()["tests"]
+    assert listed[0]["student_count"] == 2
+    fresh = client.get(
+        "/results/1234/dashboard", headers={"If-None-Match": stale_etag}
+    )
+    assert fresh.status_code == 200  # the corrected summary re-tagged
+
+
+def test_routine_restarts_leave_versions_alone(client):
+    # Reconciliation must be a no-op on healthy data, or every deploy would
+    # invalidate every dashboard's ETag at once.
+    post_xml(client, single_result("1234", "1001", 20, 13))
+    etag = client.get("/results/1234/dashboard").headers["etag"]
+    db.init(attempts=1)
+    db.init(attempts=1)
+    response = client.get(
+        "/results/1234/dashboard", headers={"If-None-Match": etag}
+    )
+    assert response.status_code == 304
+
+
 def test_import_notifies_listeners_on_commit(client):
     import time as _time
 

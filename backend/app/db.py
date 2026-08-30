@@ -41,14 +41,24 @@ CREATE TABLE IF NOT EXISTS test_summaries (
 )
 """
 
-# A volume written before test_summaries existed gets its rows on startup;
-# re-running is harmless and never touches version except to create rows.
-_SUMMARY_BACKFILL = """
+# Startup reconciliation: recompute every summary from the result rows,
+# creating missing rows and correcting any an older version left wrong. The
+# guard means a routine restart changes nothing and bumps no versions, so
+# fleet ETags survive deploys; only a summary that actually disagrees with
+# its rows gets rewritten, and its version moves because what dashboards
+# display changes with it.
+_SUMMARY_RECONCILE = """
 INSERT INTO test_summaries (test_id, student_count, marks_available)
 SELECT test_id, COUNT(*), MAX(marks_available)
 FROM student_results
 GROUP BY test_id
-ON CONFLICT (test_id) DO NOTHING
+ON CONFLICT (test_id) DO UPDATE SET
+    student_count   = EXCLUDED.student_count,
+    marks_available = EXCLUDED.marks_available,
+    version         = test_summaries.version + 1,
+    updated_at      = now()
+WHERE test_summaries.student_count   IS DISTINCT FROM EXCLUDED.student_count
+   OR test_summaries.marks_available IS DISTINCT FROM EXCLUDED.marks_available
 """
 
 _engine: sa.Engine | None = None
@@ -83,7 +93,7 @@ def init(attempts: int = 30, delay: float = 1.0) -> None:
             with _engine.begin() as conn:
                 conn.execute(sa.text(_SCHEMA))
                 conn.execute(sa.text(_SUMMARY_SCHEMA))
-                conn.execute(sa.text(_SUMMARY_BACKFILL))
+                conn.execute(sa.text(_SUMMARY_RECONCILE))
             return
         except sa.exc.OperationalError:
             if attempt == attempts:

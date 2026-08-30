@@ -93,10 +93,25 @@ def main():
         lambda: call("GET", "/results/loadtest/dashboard", etag=etag10),
         ok_status=304)
 
-    print("\nimport throughput, 100-student documents")
+    print("\nimport throughput, 100 fresh students per document")
+    # Every document carries students nobody has seen before, so this
+    # measures sustained real writes, never the idempotent skip path.
+    counter = iter(range(10_000_000, 20_000_000, 100))
+
+    def fresh_import():
+        base = next(counter)
+        records = "".join(
+            f"<mcq-test-result><student-number>{base + i}</student-number>"
+            f"<test-id>ingest-bench</test-id>"
+            f'<summary-marks available="20" obtained="{i % 21}" />'
+            f"</mcq-test-result>"
+            for i in range(100)
+        )
+        body = f"<mcq-test-results>{records}</mcq-test-results>".encode()
+        return call("POST", "/import", body, "text/xml+markr")
+
     for concurrency in (1, 2, 4):
-        run("  POST /import", concurrency, 100,
-            lambda: call("POST", "/import", sample, "text/xml+markr"))
+        run("  POST /import", concurrency, 100, fresh_import)
 
 
 if __name__ == "__main__":

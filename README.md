@@ -24,8 +24,7 @@ http://35.184.143.188:4567, with the sample data already imported.
 Load the sample results, then query their aggregate:
 
 ```bash
-curl -X POST -H 'Content-Type: text/xml+markr' \
-  --data-binary "@sample_results.xml" http://localhost:4567/import
+curl -X POST -H 'Content-Type: text/xml+markr' --data-binary "@sample_results.xml" http://localhost:4567/import
 # {"imported":100}
 
 curl http://localhost:4567/results/9863/aggregate
@@ -146,8 +145,11 @@ machine, and the load generator now committed as `scripts/benchmark.py`, so the
 run is repeatable against a running stack without any local Python:
 
 ```bash
-docker run --rm --network markr_default -v "$PWD:/work" -w /work   python:3.12-slim python scripts/benchmark.py http://backend:4567
+docker run --rm --network markr_default -v "${PWD}:/work" -w /work python:3.12-slim python scripts/benchmark.py http://backend:4567
 ```
+
+Every command in this README is a single line, so it pastes cleanly into
+bash and PowerShell alike.
 
 The figures show the shape of the change; absolute numbers move with hardware.
 
@@ -176,9 +178,11 @@ For a 10,000-student test, the before and after measurements were:
   regardless of test size. The 81-student and 10,000-student tests measure the
   same because the 304 path never touches the results table.
 
-Imports were already fast and stayed that way: ~10,700 students/second
-sustained, with a 10,000-student document taking ~340 ms. Idempotent re-imports
-still write nothing. If this needs fleet-scale headroom, the next steps are
+Imports were already fast and stayed that way: ~19,000 fresh students/second
+sustained (the benchmark sends previously unseen students per document, so
+this is real write throughput, never the idempotent skip path), and a single
+10,000-student document lands in ~340 ms. Idempotent re-imports still write
+nothing. If this needs fleet-scale headroom, the next steps are
 precomputed aggregates for O(1) reads, then read replicas, then an ingest queue
 if exam-day bursts exceed synchronous capacity.
 
@@ -202,19 +206,17 @@ if exam-day bursts exceed synchronous capacity.
 
 ## Tests
 
-There are 163 tests across three suites. The backend has 117 tests and is gated at
+There are 165 tests across three suites. The backend has 119 tests and is gated at
 100% statement coverage, the frontend has 28 tests, and the end-to-end suite has
 18 specs. Every suite runs inside Docker; no local Node, Python, or browsers are
 needed on any platform. Run these blocks in order from the repository root.
 
 ```bash
-# backend: 117 tests, 35 of them against real Postgres; the run fails
+# backend: 119 tests, 37 of them against real Postgres; the run fails
 # unless statement coverage is 100%
 docker compose up -d --wait db
 docker build --target test -t markr-backend-test ./backend
-docker run --rm --network markr_default \
-  -e DATABASE_URL="postgresql+psycopg://markr:markr@db:5432/markr" \
-  markr-backend-test
+docker run --rm --network markr_default -e DATABASE_URL="postgresql+psycopg://markr:markr@db:5432/markr" markr-backend-test
 ```
 
 ```bash
