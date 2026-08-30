@@ -36,6 +36,25 @@ def single_result(test_id: str, student: str, available: int, obtained: int) -> 
     </mcq-test-results>""".encode()
 
 
+def test_root_identifies_the_api_and_lists_its_public_endpoints(client):
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "service": "Markr API",
+        "status": "running",
+        "endpoints": {
+            "import": "POST /import",
+            "tests": "GET /tests",
+            "aggregate": "GET /results/{test_id}/aggregate",
+            "histogram": "GET /results/{test_id}/histogram",
+            "dashboard": "GET /results/{test_id}/dashboard",
+            "events": "GET /events",
+            "health": "GET /health",
+        },
+    }
+
+
 def test_import_brief_example(client):
     response = post_xml(client, (FIXTURES / "valid_single.xml").read_bytes())
     assert response.status_code == 200

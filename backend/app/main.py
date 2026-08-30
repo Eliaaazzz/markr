@@ -85,6 +85,24 @@ async def unhandled_error(_: Request, exc: Exception):
     return error(500, "Internal server error")
 
 
+@app.get("/")
+def service_info():
+    """Identify the service and point people at its public API surface."""
+    return {
+        "service": "Markr API",
+        "status": "running",
+        "endpoints": {
+            "import": "POST /import",
+            "tests": "GET /tests",
+            "aggregate": "GET /results/{test_id}/aggregate",
+            "histogram": "GET /results/{test_id}/histogram",
+            "dashboard": "GET /results/{test_id}/dashboard",
+            "events": "GET /events",
+            "health": "GET /health",
+        },
+    }
+
+
 @app.post("/import", response_model=ImportResult)
 async def import_results(request: Request):
     media_type = (request.headers.get("content-type") or "").split(";", 1)[0]
