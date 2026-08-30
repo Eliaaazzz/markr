@@ -457,3 +457,57 @@ def test_dashboard_guards_against_a_vanishing_test(client, monkeypatch):
     response = client.get("/results/1234/dashboard")
     assert response.status_code == 404
     assert response.json() == {"error": "Not found"}
+
+
+def test_concurrent_imports_keep_maxima_and_exact_counts(client):
+    """The brief's grading machines POST at the same time.
+
+    Eight threads import interleaved documents that share forty students
+    (listed in opposite orders, which would deadlock without deterministic
+    lock ordering) and each add five students of their own (which would
+    leave a stale summary count without lock-then-recompute).
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app.ingest import parse_document
+
+    def doc(students):
+        records = "".join(
+            f"<mcq-test-result><student-number>{num}</student-number>"
+            f"<test-id>ct</test-id>"
+            f'<summary-marks available="{avail}" obtained="{obt}" />'
+            f"</mcq-test-result>"
+            for num, avail, obt in students
+        )
+        return f"<mcq-test-results>{records}</mcq-test-results>".encode()
+
+    shared = [f"s{i:03d}" for i in range(40)]
+    docs = []
+    for wave in range(8):
+        order = shared if wave % 2 == 0 else list(reversed(shared))
+        rescans = [(num, 20 + wave, wave) for num in order]
+        fresh = [(f"x{wave}-{i}", 50, 25) for i in range(5)]
+        docs.append(doc(rescans + fresh))
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        # A deadlock or stale write surfaces here as a raised exception or
+        # below as a wrong number; pool.map re-raises worker errors.
+        list(pool.map(lambda raw: db.upsert_results(parse_document(raw).rows), docs))
+
+    rows = {
+        num: (avail, obt)
+        for num, avail, obt in (
+            (r[1], r[2], r[3]) for r in stored_rows()
+        )
+    }
+    assert len(rows) == 45 * 8 - 40 * 7  # 40 shared + 40 unique
+    for num in shared:
+        # Maxima merged independently across all eight waves.
+        assert rows[num] == (27, 7)
+
+    listing = client.get("/tests").json()["tests"]
+    assert listing == [
+        {"test_id": "ct", "student_count": 80, "marks_available": 50}
+    ]
+    body = client.get("/results/ct/dashboard").json()
+    assert body["aggregate"]["count"] == body["histogram"]["total"] == 80

@@ -123,17 +123,39 @@ _UPSERT = sa.text("""
     RETURNING test_id
     """)
 
-_SUMMARY_REFRESH = sa.text("""
-    INSERT INTO test_summaries (test_id, student_count, marks_available, updated_at)
-    SELECT test_id, COUNT(*), MAX(marks_available), now()
-    FROM student_results
+# The refresh is lock-then-recompute, in that order, because READ COMMITTED
+# takes a statement's snapshot at statement start: a single upsert-with-
+# aggregate could block on a concurrent import's row lock and then overwrite
+# the summary with a count computed before that import committed. Locking
+# first means the recompute statement's snapshot always includes every
+# committed row.
+_SUMMARY_ENSURE = sa.text("""
+    INSERT INTO test_summaries (test_id, student_count, marks_available)
+    SELECT t, 0, 0 FROM unnest(CAST(:test_ids AS text[])) AS t
+    ON CONFLICT (test_id) DO NOTHING
+    """)
+
+_SUMMARY_LOCK = sa.text("""
+    SELECT test_id FROM test_summaries
     WHERE test_id = ANY(CAST(:test_ids AS text[]))
-    GROUP BY test_id
-    ON CONFLICT (test_id) DO UPDATE SET
-        student_count   = EXCLUDED.student_count,
-        marks_available = EXCLUDED.marks_available,
-        version         = test_summaries.version + 1,
+    ORDER BY test_id
+    FOR UPDATE
+    """)
+
+_SUMMARY_RECOMPUTE = sa.text("""
+    UPDATE test_summaries ts SET
+        student_count   = agg.student_count,
+        marks_available = agg.marks_available,
+        version         = ts.version + 1,
         updated_at      = now()
+    FROM (
+        SELECT test_id, COUNT(*) AS student_count,
+               MAX(marks_available) AS marks_available
+        FROM student_results
+        WHERE test_id = ANY(CAST(:test_ids AS text[]))
+        GROUP BY test_id
+    ) AS agg
+    WHERE ts.test_id = agg.test_id
     """)
 
 # pg_notify inside the transaction is delivered on commit, so listeners can
@@ -153,6 +175,10 @@ def upsert_results(rows: Sequence[StudentResult]) -> int:
     """
     if not rows:
         return 0
+    # Sorted rows mean every concurrent import acquires its row locks in the
+    # same global order, so two documents sharing students can wait on each
+    # other and never deadlock.
+    rows = sorted(rows, key=lambda r: (r.test_id, r.student_number))
     payload = {
         "test_ids": [r.test_id for r in rows],
         "student_numbers": [r.student_number for r in rows],
@@ -166,7 +192,10 @@ def upsert_results(rows: Sequence[StudentResult]) -> int:
         written = [row.test_id for row in conn.execute(_UPSERT, payload)]
         changed_tests = sorted(set(written))
         if changed_tests:
-            conn.execute(_SUMMARY_REFRESH, {"test_ids": changed_tests})
+            ids = {"test_ids": changed_tests}
+            conn.execute(_SUMMARY_ENSURE, ids)
+            conn.execute(_SUMMARY_LOCK, ids)
+            conn.execute(_SUMMARY_RECOMPUTE, ids)
             conn.execute(
                 _NOTIFY, {"channel": NOTIFY_CHANNEL, "test_ids": changed_tests}
             )

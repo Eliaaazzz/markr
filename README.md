@@ -175,13 +175,13 @@ if exam-day bursts exceed synchronous capacity.
 
 ## Tests
 
-There are 161 tests across three suites. The backend has 115 tests and is gated at
+There are 162 tests across three suites. The backend has 116 tests and is gated at
 100% statement coverage, the frontend has 28 tests, and the end-to-end suite has
 18 specs. Everything runs with Docker and npm. Run these blocks in order from the
 repository root.
 
 ```bash
-# backend: 115 tests, 33 of them against real Postgres; the run fails
+# backend: 116 tests, 34 of them against real Postgres; the run fails
 # unless statement coverage is 100%
 docker compose up -d --wait db
 docker build --target test -t markr-backend-test ./backend
