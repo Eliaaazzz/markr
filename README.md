@@ -9,34 +9,38 @@ Endorsed by the Taylor Swift Fan Club.
 
 ## Quick start
 
-You only need Docker and version 2.24.4 or later of the Compose plugin. There is no `.env` file to configure.
+You only need Docker and version 2.24.4 or later of the Compose plugin. There
+is no `.env` file to configure and no local application runtime to install.
 
 ```bash
-docker compose up --build
+docker compose up -d --build --wait
 ```
 
-The dashboard is at http://localhost:3000 and the backend is at http://localhost:4567.
+Open the dashboard at http://localhost:3000. The API overview is at
+http://localhost:4567/.
+
+Upload `sample_results.xml` from the dashboard to load the worked example. Marks
+only ever merge upward, so reset the database first when you need to reproduce
+the sample numbers exactly:
+
+```bash
+docker compose down -v
+docker compose up -d --build --wait
+```
+
+To stop Markr without deleting its data:
+
+```bash
+docker compose down
+```
 
 A live copy runs on a small GCP VM if you would rather look before building:
-the dashboard at http://35.184.143.188:3000 and the API at
-http://35.184.143.188:4567, with the sample data already imported.
-
-Load the sample results, then query their aggregate:
-
-```bash
-curl -X POST -H 'Content-Type: text/xml+markr' --data-binary "@sample_results.xml" http://localhost:4567/import
-# {"imported":100}
-
-curl http://localhost:4567/results/9863/aggregate
-# {"mean":50.8,"stddev":9.92,"min":30.0,"max":75.0,"p25":45.0,"p50":50.0,"p75":55.0,"count":81}
-```
-
-`bash example-requests.sh import_sample` runs the first request. Marks only
-ever merge upward, so to reproduce the numbers above exactly, start from an
-empty database: `docker compose down -v` first if the volume has old data.
+the dashboard at http://35.184.143.188:3000 and its API health check at
+http://35.184.143.188:4567/health, with the sample data already imported.
 
 ## API
 
+- `GET /` identifies the Markr API and lists its public endpoints.
 - `POST /import` accepts Content-Type `text/xml+markr`. A successful import returns `200 {"imported": N}`. Any bad document returns `400 {"error": "..."}` and persists nothing. A record-level validation error identifies the offending record.
 - `GET /results/:test-id/aggregate` returns mean, stddev, min, max, p25, p50, p75, and student count. The statistics are percentages. An unknown id returns `404`.
 - `GET /results/:test-id/histogram` returns all ten fixed ten-point bins. The final bin is closed, so a perfect score belongs to [90, 100].
@@ -44,6 +48,20 @@ empty database: `docker compose down -v` first if the volume has old data.
 - `GET /events` is a server-sent event stream. It emits one line for each test whose results have just changed, fed by PostgreSQL LISTEN/NOTIFY.
 - `GET /tests` returns every known test in ascending id order.
 - `GET /health` drives the Compose healthcheck.
+
+After importing the sample through the dashboard, developers can make a raw
+API request from a disposable container. The HTTP client also runs inside
+Docker:
+
+```bash
+docker run --rm --network markr_default curlimages/curl:8.10.1 http://backend:4567/results/9863/aggregate
+```
+
+The response is:
+
+```json
+{"mean":50.8,"stddev":9.92,"min":30.0,"max":75.0,"p25":45.0,"p50":50.0,"p75":55.0,"count":81}
+```
 
 ## How it works
 
@@ -148,9 +166,6 @@ run is repeatable against a running stack without any local Python:
 docker run --rm --network markr_default -v "${PWD}:/work" -w /work python:3.12-slim python scripts/benchmark.py http://backend:4567
 ```
 
-Every command in this README is a single line, so it pastes cleanly into
-bash and PowerShell alike.
-
 The figures show the shape of the change; absolute numbers move with hardware.
 
 The rework had four parts:
@@ -206,13 +221,13 @@ if exam-day bursts exceed synchronous capacity.
 
 ## Tests
 
-There are 165 tests across three suites. The backend has 119 tests and is gated at
+There are 166 tests across three suites. The backend has 120 tests and is gated at
 100% statement coverage, the frontend has 28 tests, and the end-to-end suite has
 18 specs. Every suite runs inside Docker; no local Node, Python, or browsers are
 needed on any platform. Run these blocks in order from the repository root.
 
 ```bash
-# backend: 119 tests, 37 of them against real Postgres; the run fails
+# backend: 120 tests, 38 of them against real Postgres; the run fails
 # unless statement coverage is 100%
 docker compose up -d --wait db
 docker build --target test -t markr-backend-test ./backend
